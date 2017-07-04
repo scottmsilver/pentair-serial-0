@@ -1,9 +1,10 @@
 project(pool-serial CXX)
 cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
 
+# Tell CMake where to find modules.
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 
-# Download and unpack googletest at configure time
+# Download and unpack googletest at configure time.
 configure_file(CMakeLists.txt.in
                googletest-download/CMakeLists.txt)
 execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
@@ -29,23 +30,35 @@ if (CMAKE_VERSION VERSION_LESS 2.8.11)
                       "${gmock_SOURCE_DIR}/include")
 endif()
 
-include(ExternalProject)
+#include(DownloadProject)
+#download_project(PROJ                kaitai
+#                 GIT_REPOSITORY      https://github.com/scottmsilver/kaitai_struct_cpp_stl_runtime.git
+#                 GIT_TAG             master
+#                 UPDATE_DISCONNECTED 1
+#                 QUIET
+#)
 
-set(EXTERNAL_INSTALL_LOCATION ${CMAKE_BINARY_DIR}/external)
+#add_subdirectory(${googletest_SOURCE_DIR} ${googletest_BINARY_DIR})
 
-ExternalProject_Add(kaitai
-  GIT_REPOSITORY https://github.com/scottmsilver/kaitai_struct_cpp_stl_runtime.git
-  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${EXTERNAL_INSTALL_LOCATION}
-)
+
+
+#include(ExternalProject)
+
+#set(EXTERNAL_INSTALL_LOCATION ${CMAKE_BINARY_DIR}/external)
+
+#ExternalProject_Add(kaitai
+#  GIT_REPOSITORY https://github.com/scottmsilver/kaitai_struct_cpp_stl_runtime.git
+#  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${EXTERNAL_INSTALL_LOCATION}
+#)
 
 # Tell CMake to add the library and include directories from our external installation to the correct paths.
-include_directories(${EXTERNAL_INSTALL_LOCATION}/include)
-link_directories(${EXTERNAL_INSTALL_LOCATION}/lib)
+#include_directories(${EXTERNAL_INSTALL_LOCATION}/include)
+#link_directories(${EXTERNAL_INSTALL_LOCATION}/lib)
 
 
-add_executable(example serial.cpp easylogging++.cc)
-add_dependencies(example kaitai)
-target_link_libraries(example)
+add_executable(example serial.cpp easylogging++.cc pentair.cpp)
+#add_dependencies(example kaitai)
+target_link_libraries(example kaitai_struct_cpp_stl_runtime boost_thread-mt boost_system)
 
 #add_test(NAME example_test COMMAND example)
 set_property(TARGET example PROPERTY CXX_STANDARD 11)
@@ -53,7 +66,7 @@ set_property(TARGET example PROPERTY CXX_STANDARD_REQUIRED ON)
 
 
 FIND_PACKAGE(Boost)
-find_package(Boost 1.45.0 COMPONENTS timer system)
+find_package(Boost 1.45.0 COMPONENTS timer system threads boost_system)
 
 IF (Boost_FOUND)
     INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})

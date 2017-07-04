@@ -215,7 +215,7 @@ public:
         pentair_t::command_t* m__parent;
 
     public:
-        uint8_t true() const { return m_true; }
+        uint8_t trueX() const { return m_true; }
         pentair_t* _root() const { return m__root; }
         pentair_t::command_t* _parent() const { return m__parent; }
     };
@@ -673,7 +673,7 @@ public:
         pentair_t::command_t* m__parent;
 
     public:
-        on_or_off_t true() const { return m_true; }
+        on_or_off_t trueX() const { return m_true; }
         pentair_t* _root() const { return m__root; }
         pentair_t::command_t* _parent() const { return m__parent; }
     };
