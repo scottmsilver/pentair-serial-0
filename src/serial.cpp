@@ -31,6 +31,14 @@ std::string hex(const char* buffer, unsigned long size) {
   return ss.str();
 }
 
+std::string hex(char ch) {
+  return hex(&ch, 1);
+}
+
+std::string hex(const std::vector<char>& buffer) {
+  return hex(buffer.data(), buffer.size());
+}
+
 // This is a source adapter for any underlying container
 // implementing pop_back() and unread(). This is typically
 // some kind of bounded buffer.
@@ -72,14 +80,6 @@ private:
   typedef typename Container::size_type size_type;
   Container& container_;
 };
-
-std::string hex(char ch) {
-  return hex(&ch, 1);
-}
-
-std::string hex(const std::vector<char>& buffer) {
-  return hex(buffer.data(), buffer.size());
-}
 
 const int kDefaultSerialByteToRead = 128;
 
@@ -145,17 +145,42 @@ class BufferReaderMessageWriter {
 public:
   BufferReaderMessageWriter(bounded_buffer<char>& buffer) : mBuffer(buffer) {}
   
+  // Return the sum of the bytes in the buffer, treating them as unsigned.
+  // If I were more C++ wizard I'm sure there was some way to use
+  // std::accumulate on a signed char array and not have the values be treated
+  // as signed...
+  int sumUnsignedBytes(const std::string& buffer) const {
+    int bodySum = 0;
+    for (auto c : buffer) {
+      bodySum += static_cast<unsigned char>(c);
+    }
+    
+    return bodySum;
+  }
+  
   void foo() {
-    typedef BlockingContainerSource<bounded_buffer<char>> bounded_buffer_source;
-    bounded_buffer_source source(mBuffer);
-    boost::iostreams::stream<bounded_buffer_source> in(source);
+    typedef BlockingContainerSource<bounded_buffer<char>> BoundedBufferSource;
+    BoundedBufferSource source(mBuffer);
+    boost::iostreams::stream<BoundedBufferSource> in(source);
     kaitai::kstream stream(&in);
     
     while (!mStopped) {
       pentair_t::message_t message(&stream);
       
       auto command = message.command();
-      std::cout << "type: " << +command->command_type() << " checksum: " << message.checksum()->value() << std::endl;
+      
+      // The checksum is the sum of all the bytes from the 0xa5 until the checksum bytes, but not including them.
+      int calculatedChecksum = 0xa5 + message.header()->unknown0() +
+        message.address()->destination() + message.address()->source() +
+        message.command()->command_type() + message.command()->size() +
+        sumUnsignedBytes(message.command()->_raw_body());
+      
+      if (calculatedChecksum != message.checksum()->value()) {
+        // Toss the packet if checksums don't match.
+        std::cout << "type: " << +command->command_type() << " checksum: " << message.checksum()->value() << " calcChecksum: " << calculatedChecksum << std::endl;
+      } else {
+        
+      }
     }
   }
 };
@@ -194,7 +219,7 @@ int main(int argc, char* argv[]) {
   
   bounded_buffer<char> buffer(2048);
   
-  SerialBusFileWorker serialBusFileWorker(buffer, "/Users/ssilver/Google Drive/development/pool/serial/src/serial3.out");
+  SerialBusFileWorker serialBusFileWorker(buffer, "/Users/ssilver/Google Drive/development/pool/serial/src/serial.out");
   BufferReaderMessageWriter messageWriter(buffer);
   
   //serialBusFileWorker.foo();
