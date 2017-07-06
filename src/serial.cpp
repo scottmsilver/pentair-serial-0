@@ -16,7 +16,10 @@
 #include <boost/thread/thread.hpp>
 #include <boost/iostreams/categories.hpp>  // source_tag
 #include <boost/iostreams/stream.hpp>
+#include <boost/thread/thread.hpp>
 
+#include <boost/atomic.hpp>
+#include "concurrent_queue.h"
 #include "bounded_buffer.h"
 #include "easylogging++.h"
 #include "pentair.h"
@@ -65,14 +68,14 @@ public:
     if (bytesToRead == 0) {
       bytesToRead = 1;
     }
-    std::cout << "reading: " << bytesToRead << std::endl;
+    LOG(DEBUG) << "reading: " << bytesToRead << std::endl;
     
     // Read the data.
     for (auto curBufferPos = s; curBufferPos < s + bytesToRead; curBufferPos++) {
       container_.pop_back(curBufferPos);
     }
     
-    std::cout << "read: " << hex(s, bytesToRead) << std::endl;
+    LOG(DEBUG) << "read: " << hex(s, bytesToRead) << std::endl;
     return bytesToRead;
   }
   
@@ -140,10 +143,12 @@ public:
 // Worker thread reads data from buffer, turns them into pentair_t::message_t's
 class BufferReaderMessageWriter {
   bounded_buffer<char>& mBuffer;
+  moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& mQueue;
+
   bool mStopped;
   
 public:
-  BufferReaderMessageWriter(bounded_buffer<char>& buffer) : mBuffer(buffer) {}
+  BufferReaderMessageWriter(bounded_buffer<char>& buffer, moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& queue) : mBuffer(buffer), mQueue(queue) {}
   
   // Return the sum of the bytes in the buffer, treating them as unsigned.
   // If I were more C++ wizard I'm sure there was some way to use
@@ -165,31 +170,43 @@ public:
     kaitai::kstream stream(&in);
     
     while (!mStopped) {
-      pentair_t::message_t message(&stream);
-      
-      auto command = message.command();
+      std::shared_ptr<pentair_t::message_t> message(new pentair_t::message_t(&stream));
       
       // The checksum is the sum of all the bytes from the 0xa5 until the checksum bytes, but not including them.
-      int calculatedChecksum = 0xa5 + message.header()->unknown0() +
-        message.address()->destination() + message.address()->source() +
-        message.command()->command_type() + message.command()->size() +
-        sumUnsignedBytes(message.command()->_raw_body());
+      int calculatedChecksum = 0xa5 + message->header()->unknown0() +
+        message->address()->destination() + message->address()->source() +
+        message->command()->command_type() + message->command()->size() +
+        sumUnsignedBytes(message->command()->_raw_body());
       
-      if (calculatedChecksum != message.checksum()->value()) {
+      if (calculatedChecksum != message->checksum()->value()) {
         // Toss the packet if checksums don't match.
-        std::cout << "type: " << +command->command_type() << " checksum: " << message.checksum()->value() << " calcChecksum: " << calculatedChecksum << std::endl;
+        LOG(ERROR) << "Tossing out bad packet" << std::endl;
       } else {
-        
+        mQueue.enqueue(message);
       }
     }
   }
 };
 
+// Reads pentair_t::message_t's from the shared queue and ...
 class MessageReader {
+  moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& mQueue;
+  bool mStopped;
+  
+public:
+  MessageReader(moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& queue) : mQueue(queue) {}
+  // put in foo/thread
+  // take in queue do work
+  
+  void foo() {
+    while (!mStopped) {
+      std::shared_ptr<pentair_t::message_t> message;
+      
+      mQueue.wait_dequeue(message);
+      std::cout << "type: " << +message->command()->command_type() << std::endl;
+    }
+  }
 };
-
-//CLOG(DEBUG, "serial") << "--> (size = " << bufferSize << ", timeout = " << timeoutMs << ")";
-//el::Loggers::getLogger("serial");
 
 INITIALIZE_EASYLOGGINGPP
 
@@ -198,39 +215,38 @@ int main(int argc, char* argv[]) {
   // Load configuration from file
   el::Loggers::configureFromGlobal("/Users/ssilver/Google Drive/development/pool/serial/src/logging.conf");
   
-  if (false) {
-    std::ifstream myFile("/Users/ssilver/Google Drive/development/pool/serial/src/serial.out", std::ios::in | std::ios::binary);
-    kaitai::kstream stream(&myFile);
-    pentair_t pentair(&stream);
-    
-    for (auto message : *pentair.messages()) {
-      auto command = message->command();
-      std::cout << "type: " << +command->command_type() << " checksum: " << message->checksum()->value() << std::endl;
-    }
-  }
-  
-  if (false) {
-    boost::asio::io_service io_svc;
-    boost::asio::serial_port ser_port(io_svc, "/dev/ttyUSB0");
-    ser_port.set_option(boost::asio::serial_port_base::baud_rate(9600));
-    ser_port.set_option(boost::asio::serial_port_base::parity(boost::asio::serial_port_base::parity::none));
-    ser_port.set_option(boost::asio::serial_port_base::stop_bits(boost::asio::serial_port_base::stop_bits::one));
-  }
-  
   bounded_buffer<char> buffer(2048);
+  moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>> queue;
+
+  std::unique_ptr<SerialBusFileWorker> serialBusFileWorker;
+  std::unique_ptr<SerialBusWorker> serialBusWorker;
+
+  if (argc > 1 && strcmp("serial", argv[1]) == 0) {
+    std::cout << "Using serial." << std::endl;
+    boost::asio::io_service io_svc;
+    boost::asio::serial_port serial_port(io_svc, "/dev/ttyUSB0");
+    serial_port.set_option(boost::asio::serial_port_base::baud_rate(9600));
+    serial_port.set_option(boost::asio::serial_port_base::parity(boost::asio::serial_port_base::parity::none));
+    serial_port.set_option(boost::asio::serial_port_base::stop_bits(boost::asio::serial_port_base::stop_bits::one));
+    serialBusWorker.reset(new SerialBusWorker(buffer, serial_port));
+  } else if (argc > 1) {
+    auto filePath = argv[1];
+    serialBusFileWorker.reset(new SerialBusFileWorker (buffer, filePath));
+    std::cout << "Using dummy file: \"" << filePath << "\"." << std::endl;
+  } else {
+    std::cerr << "Must specify \"serial\" or a path/to/file." << std::endl;
+    exit(-1);
+  }
   
-  SerialBusFileWorker serialBusFileWorker(buffer, "/Users/ssilver/Google Drive/development/pool/serial/src/serial.out");
-  BufferReaderMessageWriter messageWriter(buffer);
   
-  //serialBusFileWorker.foo();
-  //messageWriter.foo();
+  BufferReaderMessageWriter messageWriter(buffer, queue);
+  MessageReader messageReader(queue);
   
-  auto serialBusFileWorkerThread = boost::thread(&SerialBusFileWorker::foo, &serialBusFileWorker);
+  auto serialBusWorkerThread = serialBusFileWorker.get() ? boost::thread(&SerialBusFileWorker::foo, serialBusFileWorker.release()) : boost::thread(&SerialBusWorker::foo, serialBusWorker.release());
   auto messageWriterThread = boost::thread(&BufferReaderMessageWriter::foo, &messageWriter);
-  
-  serialBusFileWorkerThread.join();
+  auto messageReaderThread = boost::thread(&MessageReader::foo, &messageReader);
+
+  serialBusWorkerThread.join();
   messageWriterThread.join();
-  
-  // Now all the loggers will use configuration from file
-  //messageLoop();
+  messageReaderThread.join();
 }
