@@ -119,7 +119,9 @@ class SerialBusWorker  {
   boost::asio::serial_port& mSerialPort;
   
 public:
-  SerialBusWorker(bounded_buffer<char>& buffer, boost::asio::serial_port& serial_port) : mBuffer(buffer), mSerialPort(serial_port) { }
+  SerialBusWorker(bounded_buffer<char>& buffer, boost::asio::serial_port& serial_port) : mBuffer(buffer), mSerialPort(serial_port) {
+    el::Loggers::getLogger("serial-bus-worker");
+  }
   
   void foo() {
     while (!mStopped) {
@@ -134,7 +136,7 @@ public:
           mBuffer.push_front(buffer[i]);
         }
       } else {
-        CLOG(DEBUG, "serial-bus-worker") << "read " << bytesRead << ": " << hex(buffer, bytesRead);
+        CLOG(DEBUG, "serial-bus-worker") << "error: " << error;
       }
     }
   }
@@ -213,22 +215,24 @@ INITIALIZE_EASYLOGGINGPP
 int main(int argc, char* argv[]) {
   START_EASYLOGGINGPP(argc, argv);
   // Load configuration from file
-  el::Loggers::configureFromGlobal("/Users/ssilver/Google Drive/development/pool/serial/src/logging.conf");
+  el::Loggers::configureFromGlobal("logging.conf");
   
   bounded_buffer<char> buffer(2048);
   moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>> queue;
 
   std::unique_ptr<SerialBusFileWorker> serialBusFileWorker;
   std::unique_ptr<SerialBusWorker> serialBusWorker;
+  std::unique_ptr<boost::asio::io_service> io_svc;
+  std::unique_ptr<boost::asio::serial_port> serial_port;
 
   if (argc > 1 && strcmp("serial", argv[1]) == 0) {
     std::cout << "Using serial." << std::endl;
-    boost::asio::io_service io_svc;
-    boost::asio::serial_port serial_port(io_svc, "/dev/ttyUSB0");
-    serial_port.set_option(boost::asio::serial_port_base::baud_rate(9600));
-    serial_port.set_option(boost::asio::serial_port_base::parity(boost::asio::serial_port_base::parity::none));
-    serial_port.set_option(boost::asio::serial_port_base::stop_bits(boost::asio::serial_port_base::stop_bits::one));
-    serialBusWorker.reset(new SerialBusWorker(buffer, serial_port));
+    io_svc.reset(new boost::asio::io_service());
+    serial_port.reset(new boost::asio::serial_port(*io_svc, "/dev/ttyUSB0"));
+    serial_port->set_option(boost::asio::serial_port_base::baud_rate(9600));
+    serial_port->set_option(boost::asio::serial_port_base::parity(boost::asio::serial_port_base::parity::none));
+    serial_port->set_option(boost::asio::serial_port_base::stop_bits(boost::asio::serial_port_base::stop_bits::one));
+    serialBusWorker.reset(new SerialBusWorker(buffer, *serial_port));
   } else if (argc > 1) {
     auto filePath = argv[1];
     serialBusFileWorker.reset(new SerialBusFileWorker (buffer, filePath));

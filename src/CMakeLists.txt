@@ -58,21 +58,21 @@ endif()
 
 add_executable(example serial.cpp easylogging++.cc pentair.cpp)
 #add_dependencies(example kaitai)
-target_link_libraries(example kaitai_struct_cpp_stl_runtime boost_thread-mt boost_system)
+target_link_libraries(example kaitai_struct_cpp_stl_runtime boost_thread pthread boost_system)
 
 #add_test(NAME example_test COMMAND example)
 set_property(TARGET example PROPERTY CXX_STANDARD 11)
 set_property(TARGET example PROPERTY CXX_STANDARD_REQUIRED ON)
 
 
-FIND_PACKAGE(Boost)
-find_package(Boost 1.45.0 COMPONENTS timer system threads boost_system)
+#FIND_PACKAGE(Boost)
+#find_package(Boost 1.45.0 COMPONENTS timer system threads boost_system)
 
-IF (Boost_FOUND)
-    INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
-    ADD_DEFINITIONS( "-DHAS_BOOST" )
-    target_link_libraries(example ${Boost_LIBRARIES})
-ENDIF()
+#IF (Boost_FOUND)
+#    INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
+#    ADD_DEFINITIONS( "-DHAS_BOOST" )
+#    target_link_libraries(example ${Boost_LIBRARIES})
+#ENDIF()
 
 FIND_PACKAGE(OpenSSL)
 IF (OPENSSL_FOUND)
