@@ -55,6 +55,7 @@ endif()
 #include_directories(${EXTERNAL_INSTALL_LOCATION}/include)
 #link_directories(${EXTERNAL_INSTALL_LOCATION}/lib)
 
+add_definitions(-DELPP_THREAD_SAFE)
 
 add_executable(example serial.cpp easylogging++.cc pentair.cpp)
 #add_dependencies(example kaitai)

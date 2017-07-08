@@ -68,14 +68,12 @@ public:
     if (bytesToRead == 0) {
       bytesToRead = 1;
     }
-    LOG(DEBUG) << "reading: " << bytesToRead << std::endl;
     
     // Read the data.
     for (auto curBufferPos = s; curBufferPos < s + bytesToRead; curBufferPos++) {
       container_.pop_back(curBufferPos);
     }
     
-    LOG(DEBUG) << "read: " << hex(s, bytesToRead) << std::endl;
     return bytesToRead;
   }
   
