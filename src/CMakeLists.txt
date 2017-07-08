@@ -56,10 +56,10 @@ endif()
 #link_directories(${EXTERNAL_INSTALL_LOCATION}/lib)
 
 add_definitions(-DELPP_THREAD_SAFE)
-
-add_executable(example serial.cpp easylogging++.cc pentair.cpp)
+include_directories(../third-party/kaitai_struct_cpp_stl_runtime)
+add_executable(example serial.cpp easylogging++.cc pentair.cpp ../third-party/kaitai_struct_cpp_stl_runtime/kaitai/kaitaistream.cpp)
 #add_dependencies(example kaitai)
-target_link_libraries(example kaitai_struct_cpp_stl_runtime boost_thread pthread boost_system)
+target_link_libraries(example boost_thread-mt iconv z pthread boost_system)
 
 #add_test(NAME example_test COMMAND example)
 set_property(TARGET example PROPERTY CXX_STANDARD 11)
