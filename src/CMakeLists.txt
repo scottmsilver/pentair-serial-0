@@ -30,30 +30,7 @@ if (CMAKE_VERSION VERSION_LESS 2.8.11)
                       "${gmock_SOURCE_DIR}/include")
 endif()
 
-#include(DownloadProject)
-#download_project(PROJ                kaitai
-#                 GIT_REPOSITORY      https://github.com/scottmsilver/kaitai_struct_cpp_stl_runtime.git
-#                 GIT_TAG             master
-#                 UPDATE_DISCONNECTED 1
-#                 QUIET
-#)
-
-#add_subdirectory(${googletest_SOURCE_DIR} ${googletest_BINARY_DIR})
-
-
-
-#include(ExternalProject)
-
-#set(EXTERNAL_INSTALL_LOCATION ${CMAKE_BINARY_DIR}/external)
-
-#ExternalProject_Add(kaitai
-#  GIT_REPOSITORY https://github.com/scottmsilver/kaitai_struct_cpp_stl_runtime.git
-#  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${EXTERNAL_INSTALL_LOCATION}
-#)
-
-# Tell CMake to add the library and include directories from our external installation to the correct paths.
-#include_directories(${EXTERNAL_INSTALL_LOCATION}/include)
-#link_directories(${EXTERNAL_INSTALL_LOCATION}/lib)
+add_subdirectory(../third-party/Simple-Web-Server ${CMAKE_BINARY_DIR}/Simple-Web-Server)
 
 add_definitions(-DELPP_THREAD_SAFE)
 include_directories(../third-party/kaitai_struct_cpp_stl_runtime)
@@ -73,21 +50,5 @@ IF (Boost_FOUND)
     ADD_DEFINITIONS( "-DHAS_BOOST" )
     target_link_libraries(example ${Boost_LIBRARIES})
 ENDIF()
-
-FIND_PACKAGE(OpenSSL)
-IF (OPENSSL_FOUND)
-   INCLUDE_DIRECTORIES(${OPENSSL_INCLUDE_DIR})
-#   target_link_libraries (decrypt ${OPENSSL_LIBRARIES})
-#   target_link_libraries (wordbase-driver ${OPENSSL_LIBRARIES})
-ENDIF()
-
-# To use this get FindSQLite3.cmake from other directory.
-#find_package(SQLite3 REQUIRED)
-#IF (SQLITE3_FOUND)
-#   INCLUDE_DIRECTORIES(${SQLITE3_INCLUDE_DIR})
-#   target_link_libraries (decrypt ${SQLITE3_LIBRARIES})
-#   target_link_libraries (wordbase-driver ${SQLITE3_LIBRARIES})
-#ENDIF()
-
 
 

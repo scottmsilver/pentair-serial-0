@@ -8,17 +8,18 @@
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/asio/serial_port.hpp>
+#include <boost/atomic.hpp>
 #include <boost/algorithm/hex.hpp>
 #include <boost/bind.hpp>
-#include <boost/thread.hpp>
-#include <boost/thread/scoped_thread.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/thread/thread.hpp>
+#include "boost/format.hpp"
 #include <boost/iostreams/categories.hpp>  // source_tag
 #include <boost/iostreams/stream.hpp>
+#include <boost/thread.hpp>
+#include <boost/thread/scoped_thread.hpp>
+#include <boost/thread/thread.hpp>
 #include <boost/thread/thread.hpp>
 
-#include <boost/atomic.hpp>
 #include "concurrent_queue.h"
 #include "bounded_buffer.h"
 #include "easylogging++.h"
@@ -106,7 +107,7 @@ public:
       for (int i = 0; i < mFileContents.size(); i++) {
         mBuffer.push_front(mFileContents[i]);
       }
-
+      
       // Wait some before we do this again.
       boost::this_thread::sleep(boost::posix_time::milliseconds(100));
     }
@@ -132,11 +133,11 @@ public:
       auto bytesRead = mSerialPort.read_some(boost::asio::buffer(buffer), error);
       
       if (!error) {
-	CLOG(INFO, "serial-bus-worker") << "read " << bytesRead << ": " << hex(buffer, bytesRead);
-
-	// FIX-ME(ssilver) - This is kind of lame pushing in a character at at a time.
-	// A future optimization would be to add a new method to the underlying buffer to
-	// allow additions of more than one character at a time.
+        CLOG(INFO, "serial-bus-worker") << "read " << bytesRead << ": " << hex(buffer, bytesRead);
+        
+        // FIX-ME(ssilver) - This is kind of lame pushing in a character at at a time.
+        // A future optimization would be to add a new method to the underlying buffer to
+        // allow additions of more than one character at a time.
         for (int i = 0; i < bytesRead; i++) {
           mBuffer.push_front(buffer[i]);
         }
@@ -181,22 +182,22 @@ public:
     
     while (!mStopped) {
       try {
-	std::shared_ptr<pentair_t::message_t> message(new pentair_t::message_t(&stream));
-	
-	// The checksum is the sum of all the bytes from the 0xa5 until the checksum bytes, but not including them.
-	int calculatedChecksum = 0xa5 + message->header()->unknown0() +
-	  message->address()->destination() + message->address()->source() +
-	  message->command()->command_type() + message->command()->size() +
-	  sumUnsignedBytes(message->command()->_raw_body());
-	
-	if (calculatedChecksum != message->checksum()->value()) {
-	  // Toss the packet if checksums don't match.
-	  LOG(ERROR) << "Tossing out bad packet" << std::endl;
-	} else {
-	  mQueue.enqueue(message);
-	}
+        std::shared_ptr<pentair_t::message_t> message(new pentair_t::message_t(&stream));
+        
+        // The checksum is the sum of all the bytes from the 0xa5 until the checksum bytes, but not including them.
+        int calculatedChecksum = 0xa5 + message->header()->unknown0() +
+        message->address()->destination() + message->address()->source() +
+        message->command()->command_type() + message->command()->size() +
+        sumUnsignedBytes(message->command()->_raw_body());
+        
+        if (calculatedChecksum != message->checksum()->value()) {
+          // Toss the packet if checksums don't match.
+          LOG(ERROR) << "Tossing out bad packet" << std::endl;
+        } else {
+          mQueue.enqueue(message);
+        }
       } catch (...) {
-	LOG(ERROR) << "Couldn't parse message: " << boost::current_exception_diagnostic_information();
+        LOG(ERROR) << "Couldn't parse message: " << boost::current_exception_diagnostic_information();
       }
     }
   }
@@ -206,15 +207,18 @@ public:
 class MessageReader {
   moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& mQueue;
   bool mStopped;
-
+  
 public:
   MessageReader(moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& queue) : mQueue(queue) {}
   
   void foo() {
+    using boost::format;
+    
     while (!mStopped) {
       std::shared_ptr<pentair_t::message_t> message;
       mQueue.wait_dequeue(message);
-      std::cout << "type: " << +message->command()->command_type() << std::endl;
+      
+      std::cout << format("%03u: %02X < %02X") % static_cast<unsigned int>(message->command()->command_type()) % static_cast<unsigned int>(message->address()->destination()) % static_cast<unsigned int>(message->address()->source()) << std::endl;
     }
   }
 };
@@ -228,12 +232,12 @@ int main(int argc, char* argv[]) {
   
   bounded_buffer<char> buffer(2048);
   moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>> queue;
-
+  
   std::unique_ptr<SerialBusFileWorker> serialBusFileWorker;
   std::unique_ptr<SerialBusWorker> serialBusWorker;
   std::unique_ptr<boost::asio::io_service> io_svc;
   std::unique_ptr<boost::asio::serial_port> serial_port;
-
+  
   if (argc > 1 && strcmp("serial", argv[1]) == 0) {
     std::cout << "Using serial." << std::endl;
     io_svc.reset(new boost::asio::io_service());
@@ -255,12 +259,12 @@ int main(int argc, char* argv[]) {
   
   BufferReaderMessageWriter messageWriter(buffer, queue);
   MessageReader messageReader(queue);
-
+  
   // Kick off the key threads to do work.
   auto serialBusWorkerThread = serialBusFileWorker.get() ? boost::thread(&SerialBusFileWorker::foo, serialBusFileWorker.release()) : boost::thread(&SerialBusWorker::foo, serialBusWorker.release());
   auto messageWriterThread = boost::thread(&BufferReaderMessageWriter::foo, &messageWriter);
   auto messageReaderThread = boost::thread(&MessageReader::foo, &messageReader);
-
+  
   // Wait for all the threads to stop. Which practically speaking never happens.
   serialBusWorkerThread.join();
   messageWriterThread.join();
