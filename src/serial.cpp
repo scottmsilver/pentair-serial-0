@@ -180,19 +180,23 @@ public:
     kaitai::kstream stream(&in);
     
     while (!mStopped) {
-      std::shared_ptr<pentair_t::message_t> message(new pentair_t::message_t(&stream));
-      
-      // The checksum is the sum of all the bytes from the 0xa5 until the checksum bytes, but not including them.
-      int calculatedChecksum = 0xa5 + message->header()->unknown0() +
-        message->address()->destination() + message->address()->source() +
-        message->command()->command_type() + message->command()->size() +
-        sumUnsignedBytes(message->command()->_raw_body());
-      
-      if (calculatedChecksum != message->checksum()->value()) {
-        // Toss the packet if checksums don't match.
-        LOG(ERROR) << "Tossing out bad packet" << std::endl;
-      } else {
-        mQueue.enqueue(message);
+      try {
+	std::shared_ptr<pentair_t::message_t> message(new pentair_t::message_t(&stream));
+	
+	// The checksum is the sum of all the bytes from the 0xa5 until the checksum bytes, but not including them.
+	int calculatedChecksum = 0xa5 + message->header()->unknown0() +
+	  message->address()->destination() + message->address()->source() +
+	  message->command()->command_type() + message->command()->size() +
+	  sumUnsignedBytes(message->command()->_raw_body());
+	
+	if (calculatedChecksum != message->checksum()->value()) {
+	  // Toss the packet if checksums don't match.
+	  LOG(ERROR) << "Tossing out bad packet" << std::endl;
+	} else {
+	  mQueue.enqueue(message);
+	}
+      } catch (...) {
+	LOG(ERROR) << "Couldn't parse message: " << boost::current_exception_diagnostic_information();
       }
     }
   }
@@ -202,14 +206,13 @@ public:
 class MessageReader {
   moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& mQueue;
   bool mStopped;
-  
+
 public:
   MessageReader(moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& queue) : mQueue(queue) {}
   
   void foo() {
     while (!mStopped) {
       std::shared_ptr<pentair_t::message_t> message;
-      
       mQueue.wait_dequeue(message);
       std::cout << "type: " << +message->command()->command_type() << std::endl;
     }
