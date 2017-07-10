@@ -5,3 +5,7 @@
 	path = third-party/Simple-Web-Server
 	url = https://github.com/eidheim/Simple-Web-Server.git
 	branch = master
+[submodule "third-party/served"]
+	path = third-party/served
+	url = https://github.com/datasift/served.git
+	branch = master
