@@ -30,13 +30,13 @@ if (CMAKE_VERSION VERSION_LESS 2.8.11)
                       "${gmock_SOURCE_DIR}/include")
 endif()
 
-add_subdirectory(../third-party/Simple-Web-Server ${CMAKE_BINARY_DIR}/Simple-Web-Server)
+add_subdirectory(../third-party/served served)
 
 add_definitions(-DELPP_THREAD_SAFE)
-include_directories(../third-party/kaitai_struct_cpp_stl_runtime)
+include_directories(../third-party/kaitai_struct_cpp_stl_runtime ../third-party/served/src)
 add_executable(example serial.cpp easylogging++.cc pentair.cpp ../third-party/kaitai_struct_cpp_stl_runtime/kaitai/kaitaistream.cpp)
-#add_dependencies(example kaitai)
-target_link_libraries(example z pthread)
+add_dependencies(example served)
+target_link_libraries(example z pthread served)
 
 #add_test(NAME example_test COMMAND example)
 set_property(TARGET example PROPERTY CXX_STANDARD 11)

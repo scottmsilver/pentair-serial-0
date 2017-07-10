@@ -20,6 +20,7 @@
 #include <boost/thread/thread.hpp>
 #include <boost/thread/thread.hpp>
 
+#include <served/served.hpp>
 #include "concurrent_queue.h"
 #include "bounded_buffer.h"
 #include "easylogging++.h"
@@ -109,7 +110,7 @@ public:
       }
       
       // Wait some before we do this again.
-      boost::this_thread::sleep(boost::posix_time::milliseconds(100));
+      boost::this_thread::sleep(boost::posix_time::milliseconds(2000));
     }
   }
 };
@@ -264,7 +265,22 @@ int main(int argc, char* argv[]) {
   auto serialBusWorkerThread = serialBusFileWorker.get() ? boost::thread(&SerialBusFileWorker::foo, serialBusFileWorker.release()) : boost::thread(&SerialBusWorker::foo, serialBusWorker.release());
   auto messageWriterThread = boost::thread(&BufferReaderMessageWriter::foo, &messageWriter);
   auto messageReaderThread = boost::thread(&MessageReader::foo, &messageReader);
-  
+
+  	served::multiplexer mux;
+
+	mux.handle("/hello")
+		.get([](served::response & res, const served::request & req) {
+			res << "Hello world";
+		});
+
+	std::cout << "Try this example with:" << std::endl;
+	std::cout << " curl http://localhost:8123/hello" << std::endl;
+
+	served::net::server server("127.0.0.1", "8123", mux);
+	server.run(10); // Run with a pool of 10 threads.
+
+	return 0;
+
   // Wait for all the threads to stop. Which practically speaking never happens.
   serialBusWorkerThread.join();
   messageWriterThread.join();
