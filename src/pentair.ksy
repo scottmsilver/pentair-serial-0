@@ -40,26 +40,38 @@ types:
         type: u2
   command:
     seq:
-      - id: command_type
+      - id: type
         type: u1
         doc: type of command
+        enum: command_type
       - id: size
         type: u1
         doc: size of command message
       - id: body
         size: size
         type:
-          switch-on: command_type
+          switch-on: type
           cases:
-            1: pump_data
-            2: controller_status
-            4: pump_remote_control
-            5: controller_date
-            6: pump_power
-            7: pump_status_request_or_response
-            8: heat_set_points
-            25: chlorinator_status
-            217: chlorinator_unknown0
+            'command_type::pump_data_type': pump_data
+            'command_type::controller_status_type': controller_status
+            'command_type::pump_remote_control_type': pump_remote_control
+            'command_type::controller_date_type': controller_date
+            'command_type::pump_power_type': pump_power
+            'command_type::pump_status_request_or_response_type': pump_status_request_or_response
+            'command_type::heat_set_points_type': heat_set_points
+            'command_type::chlorinator_status_type': chlorinator_status
+            'command_type::chlorinator_unknown0_type': chlorinator_unknown0
+    enums:
+      command_type:
+        1: pump_data_type
+        2: controller_status_type
+        4: pump_remote_control_type
+        5: controller_date_type
+        6: pump_power_type
+        7: pump_status_request_or_response_type
+        8: heat_set_points_type
+        25: chlorinator_status_type
+        217: chlorinator_unknown0_type
   controller_status:
     seq:
      - id: current_time
@@ -167,7 +179,7 @@ types:
         1: service
   pump_remote_control:
     seq:        
-      - id: on
+      - id: status
         type: u1
         enum: on_or_off
     enums:
@@ -234,7 +246,7 @@ types:
           size: 4
   chlorinator_unknown0:
     seq:
-     - id: on
+     - id: status
        type: u1
   chlorinator_status:
     seq:

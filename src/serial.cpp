@@ -188,7 +188,7 @@ public:
         // The checksum is the sum of all the bytes from the 0xa5 until the checksum bytes, but not including them.
         int calculatedChecksum = 0xa5 + message->header()->unknown0() +
         message->address()->destination() + message->address()->source() +
-        message->command()->command_type() + message->command()->size() +
+        message->command()->type() + message->command()->size() +
         sumUnsignedBytes(message->command()->_raw_body());
         
         if (calculatedChecksum != message->checksum()->value()) {
@@ -219,7 +219,14 @@ public:
       std::shared_ptr<pentair_t::message_t> message;
       mQueue.wait_dequeue(message);
       
-      std::cout << format("%03u: %02X < %02X") % static_cast<unsigned int>(message->command()->command_type()) % static_cast<unsigned int>(message->address()->destination()) % static_cast<unsigned int>(message->address()->source()) << " " << *message << std::endl;
+      std::cout << format("%03u: %02X < %02X") % static_cast<unsigned int>(message->command()->type()) % static_cast<unsigned int>(message->address()->destination()) % static_cast<unsigned int>(message->address()->source()) << " " << *message << std::endl;
+      
+      if (message->command()->type() == pentair_t::command_t::COMMAND_TYPE_CONTROLLER_STATUS_TYPE) {
+        pentair_t::controller_status_t* controllerStatus = dynamic_cast<pentair_t::controller_status_t*>(message->command()->body());
+        
+        std::cout << "pool_temp: " << +controllerStatus->pool_temp() << std::endl;
+      }
+      
     }
   }
 };
