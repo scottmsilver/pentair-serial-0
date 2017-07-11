@@ -219,7 +219,7 @@ public:
       std::shared_ptr<pentair_t::message_t> message;
       mQueue.wait_dequeue(message);
       
-      std::cout << format("%03u: %02X < %02X") % static_cast<unsigned int>(message->command()->command_type()) % static_cast<unsigned int>(message->address()->destination()) % static_cast<unsigned int>(message->address()->source()) << std::endl;
+      std::cout << format("%03u: %02X < %02X") % static_cast<unsigned int>(message->command()->command_type()) % static_cast<unsigned int>(message->address()->destination()) % static_cast<unsigned int>(message->address()->source()) << " " << *message << std::endl;
     }
   }
 };
@@ -265,22 +265,17 @@ int main(int argc, char* argv[]) {
   auto serialBusWorkerThread = serialBusFileWorker.get() ? boost::thread(&SerialBusFileWorker::foo, serialBusFileWorker.release()) : boost::thread(&SerialBusWorker::foo, serialBusWorker.release());
   auto messageWriterThread = boost::thread(&BufferReaderMessageWriter::foo, &messageWriter);
   auto messageReaderThread = boost::thread(&MessageReader::foo, &messageReader);
-
-  	served::multiplexer mux;
-
-	mux.handle("/hello")
-		.get([](served::response & res, const served::request & req) {
-			res << "Hello world";
-		});
-
-	std::cout << "Try this example with:" << std::endl;
-	std::cout << " curl http://localhost:8123/hello" << std::endl;
-
-	served::net::server server("127.0.0.1", "8123", mux);
-	server.run(10); // Run with a pool of 10 threads.
-
-	return 0;
-
+  
+  served::multiplexer mux;
+  
+  mux.handle("/hello")
+    .get([](served::response & res, const served::request & req) {
+	res << "Hello world";
+      });
+  
+  served::net::server server("127.0.0.1", "8123", mux);
+  server.run(10); // Run with a pool of 10 threads.
+  
   // Wait for all the threads to stop. Which practically speaking never happens.
   serialBusWorkerThread.join();
   messageWriterThread.join();
