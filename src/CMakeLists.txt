@@ -33,7 +33,7 @@ endif()
 add_subdirectory(../third-party/served served)
 
 add_definitions(-DELPP_THREAD_SAFE)
-include_directories(../third-party/kaitai_struct_cpp_stl_runtime ../third-party/served/src)
+include_directories(../third-party/kaitai_struct_cpp_stl_runtime ../third-party/served/src ../third-party/json-nlohmann)
 add_executable(example serial.cpp easylogging++.cc pentair.cpp ../third-party/kaitai_struct_cpp_stl_runtime/kaitai/kaitaistream.cpp)
 add_dependencies(example served)
 target_link_libraries(example z pthread served)

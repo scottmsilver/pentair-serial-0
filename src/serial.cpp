@@ -24,6 +24,7 @@
 #include "concurrent_queue.h"
 #include "bounded_buffer.h"
 #include "easylogging++.h"
+#include "json.hpp"
 #include "pentair.h"
 
 std::string hex(const char* buffer, unsigned long size) {
@@ -204,6 +205,8 @@ public:
   }
 };
 
+int gPoolTemperature;
+
 // Reads pentair_t::message_t's from the shared queue and ...
 class MessageReader {
   moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& mQueue;
@@ -224,7 +227,7 @@ public:
       if (message->command()->type() == pentair_t::command_t::COMMAND_TYPE_CONTROLLER_STATUS_TYPE) {
         pentair_t::controller_status_t* controllerStatus = dynamic_cast<pentair_t::controller_status_t*>(message->command()->body());
         
-        std::cout << "pool_temp: " << +controllerStatus->pool_temp() << std::endl;
+        gPoolTemperature = static_cast<unsigned int>(controllerStatus->pool_temp());
       }
       
     }
@@ -234,13 +237,15 @@ public:
 INITIALIZE_EASYLOGGINGPP
 
 int main(int argc, char* argv[]) {
+  // Configure logging.
   START_EASYLOGGINGPP(argc, argv);
-  // Load configuration from file
   el::Loggers::configureFromGlobal("logging.conf");
   
+  // Set up our shared data structures between threads.
   bounded_buffer<char> buffer(2048);
   moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>> queue;
   
+  // Construct the right kind of workers.
   std::unique_ptr<SerialBusFileWorker> serialBusFileWorker;
   std::unique_ptr<SerialBusWorker> serialBusWorker;
   std::unique_ptr<boost::asio::io_service> io_svc;
@@ -275,10 +280,18 @@ int main(int argc, char* argv[]) {
   
   served::multiplexer mux;
   
-  mux.handle("/hello")
-    .get([](served::response & res, const served::request & req) {
-	res << "Hello world";
-      });
+  mux.handle("/pool/v1/{property}")
+  .get([](served::response & res, const served::request & req) {
+    // handler logic
+    // req.params["property"];
+    nlohmann::json responseJson = {
+      {"poolTemperature", gPoolTemperature}
+    };
+
+    std::stringstream responseStream;
+    responseStream << responseJson;
+    res << responseStream.str();
+  });
   
   served::net::server server("127.0.0.1", "8123", mux);
   server.run(10); // Run with a pool of 10 threads.
