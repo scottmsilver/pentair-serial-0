@@ -37,10 +37,7 @@ public:
 
     pentair_t(kaitai::kstream* p_io, kaitai::kstruct* p_parent = 0, pentair_t* p_root = 0);
     void _read();
-    virtual ~pentair_t();
-
-    std::ostream& toString(std::ostream& o) const { o << "pentair_t"; return o; }
-
+    ~pentair_t();
 
     class pump_data_t : public kaitai::kstruct {
 
@@ -48,14 +45,17 @@ public:
 
         pump_data_t(kaitai::kstream* p_io, pentair_t::command_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~pump_data_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "pump_data_t"; return o; }
-
+        ~pump_data_t();
 
     private:
         uint8_t m_pump_data_type;
         kaitai::kstruct* m_body;
+        bool n_body;
+
+    public:
+        bool _is_null_body() { body(); return n_body; };
+
+    private:
         pentair_t* m__root;
         pentair_t::command_t* m__parent;
         std::string m__raw_body;
@@ -80,10 +80,7 @@ public:
 
         heat_set_points_t(kaitai::kstream* p_io, pentair_t::command_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~heat_set_points_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "heat_set_points_t"; return o; }
-
+        ~heat_set_points_t();
 
     private:
         uint8_t m_pool_temperature;
@@ -148,10 +145,7 @@ public:
 
         pump_data_rpm_t(kaitai::kstream* p_io, pentair_t::pump_data_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~pump_data_rpm_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "pump_data_rpm_t"; return o; }
-
+        ~pump_data_rpm_t();
 
     private:
         uint16_t m_rpm;
@@ -170,10 +164,7 @@ public:
 
         chlorinator_status_t(kaitai::kstream* p_io, pentair_t::command_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~chlorinator_status_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "chlorinator_status_t"; return o; }
-
+        ~chlorinator_status_t();
 
     private:
         uint8_t m_output_spa_percent;
@@ -209,10 +200,7 @@ public:
 
         pump_power_t(kaitai::kstream* p_io, pentair_t::command_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~pump_power_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "pump_power_t"; return o; }
-
+        ~pump_power_t();
 
     private:
         on_or_off_t m_status;
@@ -231,10 +219,7 @@ public:
 
         chlorinator_unknown0_t(kaitai::kstream* p_io, pentair_t::command_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~chlorinator_unknown0_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "chlorinator_unknown0_t"; return o; }
-
+        ~chlorinator_unknown0_t();
 
     private:
         uint8_t m_status;
@@ -265,15 +250,18 @@ public:
 
         command_t(kaitai::kstream* p_io, pentair_t::message_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~command_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "command_t"; return o; }
-
+        ~command_t();
 
     private:
         command_type_t m_type;
         uint8_t m_size;
         kaitai::kstruct* m_body;
+        bool n_body;
+
+    public:
+        bool _is_null_body() { body(); return n_body; };
+
+    private:
         pentair_t* m__root;
         pentair_t::message_t* m__parent;
         std::string m__raw_body;
@@ -303,10 +291,7 @@ public:
 
         pump_ack_t(kaitai::kstream* p_io, pentair_t::pump_data_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~pump_ack_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "pump_ack_t"; return o; }
-
+        ~pump_ack_t();
 
     private:
         uint8_t m_ack;
@@ -342,10 +327,7 @@ public:
 
         controller_status_t(kaitai::kstream* p_io, pentair_t::command_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~controller_status_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "controller_status_t"; return o; }
-
+        ~controller_status_t();
 
     private:
         time_t* m_current_time;
@@ -500,10 +482,7 @@ public:
 
         checksum_t(kaitai::kstream* p_io, pentair_t::message_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~checksum_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "checksum_t"; return o; }
-
+        ~checksum_t();
 
     private:
         uint16_t m_value;
@@ -522,10 +501,7 @@ public:
 
         pump_status_response_t(kaitai::kstream* p_io, pentair_t::pump_status_request_or_response_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~pump_status_response_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "pump_status_response_t"; return o; }
-
+        ~pump_status_response_t();
 
     private:
         uint8_t m_run;
@@ -566,10 +542,7 @@ public:
 
         address_t(kaitai::kstream* p_io, pentair_t::message_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~address_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "address_t"; return o; }
-
+        ~address_t();
 
     private:
         uint8_t m_destination;
@@ -598,10 +571,7 @@ public:
 
         header_t(kaitai::kstream* p_io, pentair_t::message_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~header_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "header_t"; return o; }
-
+        ~header_t();
 
     private:
         std::vector<uint8_t>* m_magic;
@@ -626,10 +596,7 @@ public:
 
         message_t(kaitai::kstream* p_io, pentair_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~message_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "message_t"; return o; }
-
+        ~message_t();
 
     private:
         header_t* m_header;
@@ -664,10 +631,7 @@ public:
 
         controller_date_t(kaitai::kstream* p_io, pentair_t::command_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~controller_date_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "controller_date_t"; return o; }
-
+        ~controller_date_t();
 
     private:
         uint8_t m_hour;
@@ -716,10 +680,7 @@ public:
 
         time_t(kaitai::kstream* p_io, kaitai::kstruct* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~time_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "time_t"; return o; }
-
+        ~time_t();
 
     private:
         uint8_t m_hour;
@@ -745,10 +706,7 @@ public:
 
         pump_remote_control_t(kaitai::kstream* p_io, pentair_t::command_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~pump_remote_control_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "pump_remote_control_t"; return o; }
-
+        ~pump_remote_control_t();
 
     private:
         on_or_off_t m_status;
@@ -767,10 +725,7 @@ public:
 
         pump_status_request_or_response_t(kaitai::kstream* p_io, pentair_t::command_t* p_parent = 0, pentair_t* p_root = 0);
         void _read();
-        virtual ~pump_status_request_or_response_t();
-
-        std::ostream& toString(std::ostream& o) const { o << "pump_status_request_or_response_t"; return o; }
-
+        ~pump_status_request_or_response_t();
 
     private:
         pump_status_response_t* m_pump_status_response;

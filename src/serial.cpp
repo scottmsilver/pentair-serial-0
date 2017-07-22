@@ -160,7 +160,7 @@ class BufferReaderMessageWriter {
 public:
   BufferReaderMessageWriter(bounded_buffer<char>& buffer, moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>>& queue) : mBuffer(buffer), mQueue(queue) {}
   
-  // Return the sum of the bytes in the buffer, treating them as unsigned.
+  // Return the sum of the bytes in the std::string, treating them as unsigned.
   // If I were more C++ wizard I'm sure there was some way to use
   // std::accumulate on a signed char array and not have the values be treated
   // as signed...
@@ -205,7 +205,43 @@ public:
   }
 };
 
-int gPoolTemperature;
+
+struct PoolOrSpaStatus {
+  bool mOn;
+  int mTemperature;
+  bool mIsFarenheit;
+};
+
+
+void to_json(nlohmann::json& j, const PoolOrSpaStatus& status) {
+  j = nlohmann::json({{"temperature", status.mTemperature},
+                      {"on", status.mOn},
+                      {"isFarenheit", status.mIsFarenheit}});
+}
+
+void from_json(const nlohmann::json& j, PoolOrSpaStatus& status) {
+  status.mTemperature = j.at("temperature");
+}
+
+struct EquipmentStatus {
+  bool mOn;
+};
+
+void to_json(nlohmann::json& j, const EquipmentStatus& status) {
+  j = nlohmann::json({{"on", status.mOn}});
+}
+
+void from_json(const nlohmann::json& j, EquipmentStatus& status) {
+  status.mOn = j.at("on");
+}
+
+
+PoolOrSpaStatus gPoolStatus;
+PoolOrSpaStatus gSpaStatus;
+EquipmentStatus gAux1Status;
+EquipmentStatus gAux2Status;
+EquipmentStatus gAux3Status;
+EquipmentStatus gAux4Status;
 
 // Reads pentair_t::message_t's from the shared queue and ...
 class MessageReader {
@@ -222,17 +258,38 @@ public:
       std::shared_ptr<pentair_t::message_t> message;
       mQueue.wait_dequeue(message);
       
-      std::cout << format("%03u: %02X < %02X") % static_cast<unsigned int>(message->command()->type()) % static_cast<unsigned int>(message->address()->destination()) % static_cast<unsigned int>(message->address()->source()) << " " << *message << std::endl;
+      std::cout << format("%03u: %02X < %02X") % static_cast<unsigned int>(message->command()->type()) % static_cast<unsigned int>(message->address()->destination()) % static_cast<unsigned int>(message->address()->source()) << " " << std::endl;
       
       if (message->command()->type() == pentair_t::command_t::COMMAND_TYPE_CONTROLLER_STATUS_TYPE) {
-        pentair_t::controller_status_t* controllerStatus = dynamic_cast<pentair_t::controller_status_t*>(message->command()->body());
+        pentair_t::controller_status_t* controllerStatus = static_cast<pentair_t::controller_status_t*>(message->command()->body());
         
-        gPoolTemperature = static_cast<unsigned int>(controllerStatus->pool_temp());
+        gPoolStatus.mTemperature = static_cast<unsigned int>(controllerStatus->pool_temp());
+        gPoolStatus.mOn =  controllerStatus->pool_status();
+        gPoolStatus.mIsFarenheit = controllerStatus->temperature_units() == pentair_t::controller_status_t::TEMPERATURE_UNITS_FARENHEIT;
+        
+        gSpaStatus.mTemperature = static_cast<unsigned int>(controllerStatus->spa_temp());
+        gSpaStatus.mOn =  controllerStatus->spa_status();
+        gSpaStatus.mIsFarenheit = controllerStatus->temperature_units() == pentair_t::controller_status_t::TEMPERATURE_UNITS_FARENHEIT;
+        
+        gAux1Status.mOn = controllerStatus->aux1_status();
+        gAux2Status.mOn = controllerStatus->aux2_status();
+        gAux3Status.mOn = controllerStatus->aux3_status();
+        gAux4Status.mOn = controllerStatus->aux4_status();
       }
-      
     }
   }
 };
+
+
+// Write a Json version of t using nlohmann::json. This means that
+// t must support to_json() and from_json().
+template <class T>
+void writeJsonResponse(served::response& res, T&& t) {
+  nlohmann::json responseJson(t);
+  std::stringstream responseStream;
+  responseStream << responseJson;
+  res << responseStream.str();
+}
 
 INITIALIZE_EASYLOGGINGPP
 
@@ -244,6 +301,7 @@ int main(int argc, char* argv[]) {
   // Set up our shared data structures between threads.
   bounded_buffer<char> buffer(2048);
   moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>> queue;
+  
   
   // Construct the right kind of workers.
   std::unique_ptr<SerialBusFileWorker> serialBusFileWorker;
@@ -270,6 +328,12 @@ int main(int argc, char* argv[]) {
     exit(-1);
   }
   
+  // Get and set pool temperature.
+  // Get and set spa temperature.
+  // Get and set spa jets and on.
+  // Get and set lights on.
+  // Set light pattern.
+  
   BufferReaderMessageWriter messageWriter(buffer, queue);
   MessageReader messageReader(queue);
   
@@ -280,21 +344,25 @@ int main(int argc, char* argv[]) {
   
   served::multiplexer mux;
   
-  mux.handle("/pool/v1/{property}")
+  mux.handle("/pool/v1/{property}/status")
   .get([](served::response & res, const served::request & req) {
-    // handler logic
-    // req.params["property"];
-    nlohmann::json responseJson = {
-      {"poolTemperature", gPoolTemperature}
-    };
+    std::string property = req.params["property"];
 
     std::stringstream responseStream;
-    responseStream << responseJson;
+
+    if (property.compare("pool") == 0) {
+      writeJsonResponse(res, gPoolStatus);
+    } else if (property.compare("spa") == 0) {
+      writeJsonResponse(res, gSpaStatus);
+    } else if (property.compare("lights") == 0) {
+      writeJsonResponse(res, gAux1Status);
+    }
+    
     res << responseStream.str();
   });
   
   served::net::server server("127.0.0.1", "8123", mux);
-  server.run(10); // Run with a pool of 10 threads.
+  server.run(10);
   
   // Wait for all the threads to stop. Which practically speaking never happens.
   serialBusWorkerThread.join();
