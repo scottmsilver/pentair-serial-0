@@ -150,6 +150,41 @@ public:
   }
 };
 
+// Reads from serial port and writes to the bounded_buffer.
+// Writes data as soon as it's ready.
+class SerialBusWriter  {
+  bounded_buffer<char>& mBuffer;
+  bool mStopped;
+  boost::asio::serial_port& mSerialPort;
+  static constexpr const char* kLoggerName = "serial-bus-writer-worker";
+
+public:
+  SerialBusWriter(bounded_buffer<char>& buffer, boost::asio::serial_port& serial_port) : mBuffer(buffer), mSerialPort(serial_port) {
+    el::Loggers::getLogger(kLoggerName);
+  }
+  
+  void foo() {
+    while (!mStopped) {
+      // FIX-ME(ssilver) - This is kind of lame pushing in a character at at a time.
+      // A future optimization would be to add a new method to the underlying buffer to
+      // allow additions of more than one character at a time.
+      for (int i = 0; i < mBuffer.unread(); i++) {
+        char byte;
+        boost::system::error_code error;
+
+        mBuffer.pop_back(&byte);
+        auto bytesWritten = mSerialPort.write_some(boost::asio::buffer(&byte, 1), error);
+        
+        if (!error && bytesWritten == 1) {
+          CLOG(DEBUG, kLoggerName) << "Wrote a byte";
+        } else {
+          CLOG(DEBUG, kLoggerName) << "error: " << error << " bytesWritten: " << bytesWritten;
+        }
+      }
+    }
+  }
+};
+
 // Reads data from the shared buffer, turns them into pentair_t::message_t's and puts
 // them on a shared queue passed in at construction time.
 class BufferReaderMessageWriter {
@@ -293,7 +328,7 @@ void writeJsonResponse(served::response& res, T&& t) {
 
 INITIALIZE_EASYLOGGINGPP
 
-int main(int argc, char* argv[]) {
+int main2(int argc, char* argv[]) {
   // Configure logging.
   START_EASYLOGGINGPP(argc, argv);
   el::Loggers::configureFromGlobal("logging.conf");
@@ -368,4 +403,102 @@ int main(int argc, char* argv[]) {
   serialBusWorkerThread.join();
   messageWriterThread.join();
   messageReaderThread.join();
+}
+
+// Copyright Vladimir Prus 2002-2004.
+// Distributed under the Boost Software License, Version 1.0.
+// (See accompanying file LICENSE_1_0.txt
+// or copy at http://www.boost.org/LICENSE_1_0.txt)
+
+
+#include <boost/program_options.hpp>
+using namespace boost::program_options;
+
+#include <iostream>
+using namespace std;
+
+/* Auxiliary functions for checking input for validity. */
+
+/* Function used to check that 'opt1' and 'opt2' are not specified
+ at the same time. */
+void conflicting_options(const variables_map& vm,
+                         const char* opt1, const char* opt2)
+{
+  if (vm.count(opt1) && !vm[opt1].defaulted()
+      && vm.count(opt2) && !vm[opt2].defaulted())
+    throw logic_error(string("Conflicting options '")
+                      + opt1 + "' and '" + opt2 + "'.");
+}
+
+/* Function used to check that of 'for_what' is specified, then
+ 'required_option' is specified too. */
+void option_dependency(const variables_map& vm,
+                       const char* for_what, const char* required_option)
+{
+  if (vm.count(for_what) && !vm[for_what].defaulted())
+    if (vm.count(required_option) == 0 || vm[required_option].defaulted())
+      throw logic_error(string("Option '") + for_what
+                        + "' requires option '" + required_option + "'.");
+}
+
+int main(int argc, char* argv[])
+{
+  try {
+    string ofile;
+    string macrofile, libmakfile;
+    bool t_given = false;
+    bool b_given = false;
+    string mainpackage;
+    string depends = "deps_file";
+    string sources = "src_file";
+    string root = ".";
+    
+    options_description desc("Allowed options");
+    desc.add_options()
+    // First parameter describes option name/short name
+    // The second is parameter to option
+    // The third is description
+    ("help,h", "print usage message")
+    ("output,o", value(&ofile), "pathname for output")
+    ("count", value<int>()->required(), "number of executions")
+    ("macrofile,m", value(&macrofile), "full pathname of macro.h")
+    ("two,t", bool_switch(&t_given), "preprocess both header and body")
+    ("body,b", bool_switch(&b_given), "preprocess body in the header context")
+    ("libmakfile,l", value(&libmakfile),
+     "write include makefile for library")
+    ("mainpackage,p", value(&mainpackage),
+     "output dependency information")
+    ("depends,d", value(&depends),
+     "write dependencies to <pathname>")
+    ("sources,s", value(&sources), "write source package list to <pathname>")
+    ("root,r", value(&root), "treat <dirname> as project root directory")
+    ;
+    
+    variables_map vm;
+    store(parse_command_line(argc, argv, desc), vm);
+    
+    if (vm.count("help")) {
+      cout << desc << "\n";
+      return 0;
+    }
+    
+    conflicting_options(vm, "output", "two");
+    conflicting_options(vm, "output", "body");
+    conflicting_options(vm, "output", "mainpackage");
+    conflicting_options(vm, "two", "mainpackage");
+    conflicting_options(vm, "body", "mainpackage");
+    
+    conflicting_options(vm, "two", "body");
+    conflicting_options(vm, "libmakfile", "mainpackage");
+    conflicting_options(vm, "libmakfile", "mainpackage");
+    
+    option_dependency(vm, "depends", "mainpackage");
+    option_dependency(vm, "sources", "mainpackage");
+    option_dependency(vm, "root", "mainpackage");
+    
+    cout << "two = " << vm["two"].as<bool>() << "\n";
+  }
+  catch(exception& e) {
+    cerr << e.what() << "\n";
+  }
 }
