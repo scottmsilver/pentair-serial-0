@@ -118,13 +118,13 @@ public:
 
 // Reads from serial port and writes to the bounded_buffer.
 // Writes data as soon as it's ready.
-class SerialBusWorker  {
+class SerialBusReaderWorker  {
   bounded_buffer<char>& mBuffer;
   bool mStopped;
   boost::asio::serial_port& mSerialPort;
   
 public:
-  SerialBusWorker(bounded_buffer<char>& buffer, boost::asio::serial_port& serial_port) : mBuffer(buffer), mSerialPort(serial_port) {
+  SerialBusReaderWorker(bounded_buffer<char>& buffer, boost::asio::serial_port& serial_port) : mBuffer(buffer), mSerialPort(serial_port) {
     el::Loggers::getLogger("serial-bus-worker");
   }
   
@@ -150,16 +150,15 @@ public:
   }
 };
 
-// Reads from serial port and writes to the bounded_buffer.
-// Writes data as soon as it's ready.
-class SerialBusWriter  {
+// Reads from buffer and writes to serial port.
+class SerialBusWriterWorker  {
   bounded_buffer<char>& mBuffer;
   bool mStopped;
   boost::asio::serial_port& mSerialPort;
   static constexpr const char* kLoggerName = "serial-bus-writer-worker";
 
 public:
-  SerialBusWriter(bounded_buffer<char>& buffer, boost::asio::serial_port& serial_port) : mBuffer(buffer), mSerialPort(serial_port) {
+  SerialBusWriterWorker(bounded_buffer<char>& buffer, boost::asio::serial_port& serial_port) : mBuffer(buffer), mSerialPort(serial_port) {
     el::Loggers::getLogger(kLoggerName);
   }
   
@@ -240,6 +239,68 @@ public:
   }
 };
 
+
+class OutboundMessage {
+  unsigned int mDestination;
+  unsigned int mSource;
+  unsigned int mCommandType;
+  
+  friend std::ostream& operator<<(std::ostream&, const OutboundMessage&);
+public:
+  OutboundMessage(unsigned int destination, unsigned source, unsigned commandType): mDestination(destination), mSource(source), mCommandType(commandType) {
+  }
+};
+
+std::ostream& operator<< (std::ostream& outs, const OutboundMessage& obj) {
+  outs.put(0xa5);
+  outs.put(0);
+  outs.put(obj.mDestination);
+  outs.put(obj.mSource);
+  outs.put(obj.mCommandType);
+  outs.put(0); // size
+  
+  unsigned int calculatedChecksum = 0xa5 + 0 + obj.mDestination + obj.mSource + obj.mCommandType + 0;
+  outs.put(calculatedChecksum);
+  return outs;
+}
+
+const int kAppAddress = 33;
+const int kBroadcastAddress = 16;
+const int kGetHeatmodeCommand = 253;
+
+class StatusCheckWorker {
+  bounded_buffer<char>& mBuffer;
+  bool mStopped;
+  
+public:
+  StatusCheckWorker(bounded_buffer<char>& buffer) : mBuffer(buffer), mStopped(false) {}
+  
+  //container.queuePacket.queuePacket([165, controllerSettings.preambleByte, 16, controllerSettings.appAddress, 253, 1, 0]);
+  // appAddress 33
+  
+  void writeMessage(const OutboundMessage& message) {
+    // FIX-ME lock buffer
+  
+    // Crap that asserts we get the bus.
+    mBuffer.push_front(0xff);
+    mBuffer.push_front(0xff);
+    
+    // Needless buffering...FIX-ME(ssilver)
+    std::stringstream packetStream;
+    packetStream << message;
+    std::string packet = packetStream.str();
+    for(char& c : packet) {
+      mBuffer.push_front(static_cast<unsigned char>(c));
+    }
+  }
+  
+  void foo() {
+    // Repeatedly send out a command to get status from all the devices.
+    while (!mStopped) {
+      writeMessage(OutboundMessage(kBroadcastAddress, kAppAddress, kGetHeatmodeCommand));
+    }
+  }
+};
 
 struct PoolOrSpaStatus {
   bool mOn;
@@ -328,7 +389,7 @@ void writeJsonResponse(served::response& res, T&& t) {
 
 INITIALIZE_EASYLOGGINGPP
 
-int main2(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {
   // Configure logging.
   START_EASYLOGGINGPP(argc, argv);
   el::Loggers::configureFromGlobal("logging.conf");
@@ -337,10 +398,9 @@ int main2(int argc, char* argv[]) {
   bounded_buffer<char> buffer(2048);
   moodycamel::BlockingReaderWriterQueue<std::shared_ptr<pentair_t::message_t>> queue;
   
-  
   // Construct the right kind of workers.
   std::unique_ptr<SerialBusFileWorker> serialBusFileWorker;
-  std::unique_ptr<SerialBusWorker> serialBusWorker;
+  std::unique_ptr<SerialBusReaderWorker> SerialBusReaderWorker;
   std::unique_ptr<boost::asio::io_service> io_svc;
   std::unique_ptr<boost::asio::serial_port> serial_port;
   
@@ -351,7 +411,7 @@ int main2(int argc, char* argv[]) {
     serial_port->set_option(boost::asio::serial_port_base::baud_rate(9600));
     serial_port->set_option(boost::asio::serial_port_base::parity(boost::asio::serial_port_base::parity::none));
     serial_port->set_option(boost::asio::serial_port_base::stop_bits(boost::asio::serial_port_base::stop_bits::one));
-    serialBusWorker.reset(new SerialBusWorker(buffer, *serial_port));
+    SerialBusReaderWorker.reset(new class SerialBusReaderWorker(buffer, *serial_port));
   } else if (argc > 1) {
     // Support reading from a file for testing reasons. The file is just a dump
     // from the serial port obtained via "cat < /dev/ttyUSB0 > myfile"
@@ -368,15 +428,23 @@ int main2(int argc, char* argv[]) {
   // Get and set spa jets and on.
   // Get and set lights on.
   // Set light pattern.
-  
   BufferReaderMessageWriter messageWriter(buffer, queue);
   MessageReader messageReader(queue);
   
   // Kick off the key threads to do work.
-  auto serialBusWorkerThread = serialBusFileWorker.get() ? boost::thread(&SerialBusFileWorker::foo, serialBusFileWorker.release()) : boost::thread(&SerialBusWorker::foo, serialBusWorker.release());
+  auto serialBusReaderWorkerThread = serialBusFileWorker.get() ? boost::thread(&SerialBusFileWorker::foo, serialBusFileWorker.release()) : boost::thread(&SerialBusReaderWorker::foo, SerialBusReaderWorker.release());
   auto messageWriterThread = boost::thread(&BufferReaderMessageWriter::foo, &messageWriter);
   auto messageReaderThread = boost::thread(&MessageReader::foo, &messageReader);
   
+  
+  bounded_buffer<char> writeBuffer(2048);
+  SerialBusWriterWorker serialBusWriterWorker(writeBuffer, *serial_port);
+
+  auto serialBusWriterThread = boost::thread(&SerialBusWriterWorker::foo, &serialBusWriterWorker);
+
+  StatusCheckWorker statusChecker(writeBuffer);
+  auto statusCheckerThread = boost::thread(&StatusCheckWorker::foo, &statusChecker);
+ 
   served::multiplexer mux;
   
   mux.handle("/pool/v1/{property}/status")
@@ -400,9 +468,11 @@ int main2(int argc, char* argv[]) {
   server.run(10);
   
   // Wait for all the threads to stop. Which practically speaking never happens.
-  serialBusWorkerThread.join();
+  serialBusReaderWorkerThread.join();
   messageWriterThread.join();
   messageReaderThread.join();
+  serialBusWriterThread.join();
+  statusCheckerThread.join();
 }
 
 // Copyright Vladimir Prus 2002-2004.
@@ -441,7 +511,7 @@ void option_dependency(const variables_map& vm,
                         + "' requires option '" + required_option + "'.");
 }
 
-int main(int argc, char* argv[])
+int main1(int argc, char* argv[])
 {
   try {
     string ofile;
@@ -501,4 +571,6 @@ int main(int argc, char* argv[])
   catch(exception& e) {
     cerr << e.what() << "\n";
   }
+  
+  return 0;
 }
