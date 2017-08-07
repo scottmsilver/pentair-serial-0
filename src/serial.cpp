@@ -12,7 +12,7 @@
 #include <boost/algorithm/hex.hpp>
 #include <boost/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include "boost/format.hpp"
+#include <boost/format.hpp>
 #include <boost/iostreams/categories.hpp>  // source_tag
 #include <boost/iostreams/stream.hpp>
 #include <boost/thread.hpp>
@@ -39,6 +39,10 @@ std::string hex(const char* buffer, unsigned long size) {
 
 std::string hex(char ch) {
   return hex(&ch, 1);
+}
+
+std::string hex(const std::string& str) {
+  return hex(str.data(), str.size());
 }
 
 std::string hex(const std::vector<char>& buffer) {
@@ -173,9 +177,10 @@ public:
 
         mBuffer.pop_back(&byte);
         auto bytesWritten = mSerialPort.write_some(boost::asio::buffer(&byte, 1), error);
-        
+
+
+	
         if (!error && bytesWritten == 1) {
-          CLOG(DEBUG, kLoggerName) << "Wrote a byte";
         } else {
           CLOG(DEBUG, kLoggerName) << "error: " << error << " bytesWritten: " << bytesWritten;
         }
@@ -222,13 +227,13 @@ public:
         
         // The checksum is the sum of all the bytes from the 0xa5 until the checksum bytes, but not including them.
         int calculatedChecksum = 0xa5 + message->header()->unknown0() +
-        message->address()->destination() + message->address()->source() +
-        message->command()->type() + message->command()->size() +
-        sumUnsignedBytes(message->command()->_raw_body());
+	  message->address()->destination() + message->address()->source() +
+	  message->command()->type() + message->command()->size() +
+	  sumUnsignedBytes(message->command()->_raw_body());
         
         if (calculatedChecksum != message->checksum()->value()) {
           // Toss the packet if checksums don't match.
-          LOG(ERROR) << "Tossing out bad packet" << std::endl;
+          LOG(ERROR) << "Tossing out bad packet";
         } else {
           mQueue.enqueue(message);
         }
@@ -260,20 +265,25 @@ std::ostream& operator<< (std::ostream& outs, const OutboundMessage& obj) {
   outs.put(0); // size
   
   unsigned int calculatedChecksum = 0xa5 + 0 + obj.mDestination + obj.mSource + obj.mCommandType + 0;
+  outs.put(0); // low byte of checksum
   outs.put(calculatedChecksum);
   return outs;
 }
 
 const int kAppAddress = 33;
 const int kBroadcastAddress = 16;
-const int kGetHeatmodeCommand = 253;
+const int kGetSoftwareVersionCommand = 253;
+const int kGetPoolSpaHeatModeCommand = 200;
 
 class StatusCheckWorker {
   bounded_buffer<char>& mBuffer;
   bool mStopped;
-  
+  static constexpr const char* kLoggerName = "status-check-worker";
+
 public:
-  StatusCheckWorker(bounded_buffer<char>& buffer) : mBuffer(buffer), mStopped(false) {}
+  StatusCheckWorker(bounded_buffer<char>& buffer) : mBuffer(buffer), mStopped(false) {
+    el::Loggers::getLogger(kLoggerName);
+  }
   
   //container.queuePacket.queuePacket([165, controllerSettings.preambleByte, 16, controllerSettings.appAddress, 253, 1, 0]);
   // appAddress 33
@@ -284,12 +294,16 @@ public:
     // Crap that asserts we get the bus.
     mBuffer.push_front(0xff);
     mBuffer.push_front(0xff);
+    mBuffer.push_front(0x00);
+    mBuffer.push_front(0xff);
     
     // Needless buffering...FIX-ME(ssilver)
     std::stringstream packetStream;
     packetStream << message;
     std::string packet = packetStream.str();
-    for(char& c : packet) {
+
+    CLOG(INFO, "status-check-worker") << "writing: " << hex(packet);
+    for (char& c : packet) {
       mBuffer.push_front(static_cast<unsigned char>(c));
     }
   }
@@ -297,7 +311,9 @@ public:
   void foo() {
     // Repeatedly send out a command to get status from all the devices.
     while (!mStopped) {
-      writeMessage(OutboundMessage(kBroadcastAddress, kAppAddress, kGetHeatmodeCommand));
+      writeMessage(OutboundMessage(kBroadcastAddress, kAppAddress, kGetSoftwareVersionCommand));
+      writeMessage(OutboundMessage(kBroadcastAddress, kAppAddress, kGetPoolSpaHeatModeCommand));
+      boost::this_thread::sleep(boost::posix_time::milliseconds(3000));
     }
   }
 };

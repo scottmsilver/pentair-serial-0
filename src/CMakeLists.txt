@@ -43,7 +43,7 @@ set_property(TARGET example PROPERTY CXX_STANDARD 11)
 set_property(TARGET example PROPERTY CXX_STANDARD_REQUIRED ON)
 
 FIND_PACKAGE(Boost)
-find_package(Boost 1.45.0 COMPONENTS timer system thread system)
+find_package(Boost 1.45.0 COMPONENTS timer system thread system program_options)
 
 IF (Boost_FOUND)
     INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
